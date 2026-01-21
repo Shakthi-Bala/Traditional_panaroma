@@ -4,6 +4,12 @@ __pycache__/
 .env
 .DS_Store
 .vscode/
-.png
-.jpg
-.jpeg
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.tex
+*.cls
+*.zip
+*.tar.gz
+*.rar
