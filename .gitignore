@@ -13,3 +13,9 @@ __pycache__/
 *.zip
 *.tar.gz
 *.rar
+
+# Ignore all Data folders in any subdirectory
+**/Data/
+
+# Ignore the Draft folder (optional, if you don't want to track the LaTeX template yet)
+**/Draft/
