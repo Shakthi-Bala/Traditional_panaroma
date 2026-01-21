@@ -21,7 +21,21 @@ import os
 # Add any python libraries here
 
 
-# def anms(image):
+def imregionalmax(input, nLocMax=100, threshold=0.0, min_dist=10):
+    "Iteratively finds global maxima and suppresses region around them"
+    temp_mat= input.copy()
+    locations=[]
+
+    for i in range(nLocMax):
+        _,max_val,_,max_loc=cv2.minMaxLoc(temp_mat)
+
+        #check threshold
+        if max_val<=threshold:
+            break
+        locations.append(max_loc)
+
+        cv2.circle(temp_mat, max_loc, int(min_dist),0.0,-1)
+    return locations        
     
 def main():
     # Add any Command Line arguments here
@@ -36,7 +50,7 @@ def main():
     """
     train_dir="Traditional_panaroma/YourDirectoryID_p1/Phase1/Data/Train/Set1"
 
-    file_names=os.listdir(train_dir)
+    file_names=sorted(os.listdir(train_dir))
 
 
 
@@ -71,48 +85,96 @@ def main():
 
 
         # Better corners (Shi-Tomasi)
-        corners=cv2.goodFeaturesToTrack(img,maxCorners=100,qualityLevel=0.01,minDistance=10)
+        # not using as harder to use during ANMS
+        # corners=cv2.goodFeaturesToTrack(img,maxCorners=1000,qualityLevel=0.01,minDistance=10)
 
-        bgr_img=cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        # bgr_img=cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-        if corners is not None:
+        # if corners is not None:
 
-            corners=np.int32(corners)
+        #     corners=np.int32(corners)
 
-            for corner in corners:
-                x,y=corner.ravel()
+        #     for corner in corners:
+        #         x,y=corner.ravel()
                 
-                cv2.circle(bgr_img,(x,y),3,(0,0,255),-1)
+        #         cv2.circle(bgr_img,(x,y),3,(0,0,255),-1)
+
+
+        # Using shi tomasi heatmap
+        corners=cv2.cornerMinEigenVal(img,blockSize=blockSize,ksize=k_size)
+        corners_norm=cv2.normalize(corners, None, 0, 255, cv2.NORM_MINMAX)
 
         # save corner image
         save_file_path=f"Traditional_panaroma/YourDirectoryID_p1/Phase1/Code/Image_results/corners{i:03d}.png"
-        cv2.imwrite(save_file_path,bgr_img)
+        cv2.imwrite(save_file_path,corners_norm)
         
 
-    """
-    Perform ANMS: Adaptive Non-Maximal Suppression
-    Save ANMS output as anms.png
-    """
+        """
+        Perform ANMS: Adaptive Non-Maximal Suppression
+        Save ANMS output as anms.png
+        """
+
+        local_maxima=imregionalmax(corners, nLocMax=1000,threshold=0.01, min_dist=5)
+
+        N_strong=len(local_maxima)
+        r=[float('inf')]*N_strong
+        
+        for k in range(N_strong):
+            xi, yi= local_maxima[k]
+
+            score_i=corners[yi,xi]
+
+            for j in range(N_strong):
+                xj,yj=local_maxima[j]
+                score_j=corners[yj,xj]
+
+                if score_j>score_i:
+                    ED=(xj-xi)**2 + (yj-yi)**2
+
+                    if ED<r[k]:
+                        r[k]=ED
+        
+
+        maxima_with_radius=list(zip(r,local_maxima))
+
+        maxima_with_radius.sort(key=lambda x:x[0],reverse=True)
+        top_n=100
+        anms_corners=maxima_with_radius[:top_n]
+
+        anms_img=cv2.cvtColor(img,cv2.COLOR_GRAY2BGR)
+
+        for radius, point in anms_corners:
+            x,y =point
+            cv2.circle(anms_img, (x,y),3,(0,0,255),-1)
+
+        # save corner image
+        save_file_path=f"Traditional_panaroma/YourDirectoryID_p1/Phase1/Code/Image_results/anms{i:03d}.png"
+        cv2.imwrite(save_file_path,anms_img)
+
+
+
+
+
     
 
-    """
-    Feature Descriptors
-    Save Feature Descriptor output as FD.png
-    """
+        """
+        Feature Descriptors
+        Save Feature Descriptor output as FD.png
+        """
 
-    """
-    Feature Matching
-    Save Feature Matching output as matching.png
-    """
+        """
+        Feature Matching
+        Save Feature Matching output as matching.png
+        """
 
-    """
-    Refine: RANSAC, Estimate Homography
-    """
+        """
+        Refine: RANSAC, Estimate Homography
+        """
 
-    """
-    Image Warping + Blending
-    Save Panorama output as mypano.png
-    """
+        """
+        Image Warping + Blending
+        Save Panorama output as mypano.png
+        """
 
 
 if __name__ == "__main__":
