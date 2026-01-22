@@ -45,6 +45,10 @@ def main():
     # Args = Parser.parse_args()
     # NumFeatures = Args.NumFeatures
 
+    # create Image results folder 
+    os.makedirs("Traditional_panaroma/YourDirectoryID_p1/Phase1/Code/Image_results",exist_ok=True)
+
+    
     """
     Read a set of images for Panorama stitching
     """
