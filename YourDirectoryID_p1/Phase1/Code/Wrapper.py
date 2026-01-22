@@ -283,14 +283,111 @@ def main():
         return np.array(pts1), np.array(pts2)
     
         
-
-    
     """
     Refine: RANSAC, Estimate Homography
     """
     
+    def computer_homography(pts1, pts2):
+        A= []
+        for (x,y), (xp,yp) in zip(pts1, pts2):
+            A.append([-x,-y,-1,0,0,0,x*xp,y*xp,xp])
+            A.append([0,0,0,-x,-y,-1,x*yp,y*yp,yp])
+        A = np.array(A)
+        _, _, VT = np.linalg.svd(A)
+        H = VT[-1].reshape(3,3)
+        return H / H[2,2]
+    
+    def ssd(p2, Hp1):
+        return np.sum((p2 - Hp1)**2)
+    
+    def apply_homography(H, pts):
+        x, y = pts
+        p = np.array([x, y, 1.0])
+        Hp = H @ p
+        Hp = Hp / Hp[2]
+        return Hp[:2]
+    
+    def ransac(kps1, kps2, matches, Nmax=2000, tau=5.0):
+        best_inliers = []
+        best_H = None
+
+        pts1_all = np.array([kps1[i] for i, _ in matches])
+        pts2_all = np.array([kps2[j] for _, j in matches])
+        M = len(matches)
+
+        if M < 4:
+            return None, []
+
+        for _ in range(Nmax):
+            idx = np.random.choice(M, 4, replace=False)
+            pts_1 = pts1_all[idx]
+            pts_2 = pts2_all[idx]
+
+            H = computer_homography(pts_1, pts_2)
+            inliers = []
+
+            for i in range(M):
+                Hp1 = apply_homography(H, pts1_all[i])
+                error = np.linalg.norm(pts2_all[i] - Hp1)
+                if error < tau:
+                    inliers.append(i)
+
+            if len(inliers) > len(best_inliers):
+                best_inliers = inliers
+                best_H = H
+
+        if best_H is None or len(best_inliers) < 4:
+            return None, []
+
+        H_final = computer_homography(
+            pts1_all[best_inliers],
+            pts2_all[best_inliers]
+        )
+        return H_final, best_inliers
+
+    
+    # H, inliers = ransac(kps1, kps2, matches)
+
+    # print("Inliers:", len(inliers))
+
+
+
+    for i in range(len(features) - 1):
+        img1 = features[i]["image"]
+        img2 = features[i+1]["image"]
+
+        kps1 = features[i]["keypoints"]
+        kps2 = features[i+1]["keypoints"]
+
+        desc1 = features[i]["descriptors"]
+        desc2 = features[i+1]["descriptors"]
+
+        matches = feature_matching(desc1, desc2, kps1, kps2)
+
+        H, inliers = ransac(kps1, kps2, matches)
+        print("Inliers:", len(inliers))
+
+        cv_matches = [
+            cv2.DMatch(_queryIdx=matches[i][0],
+                    _trainIdx=matches[i][1],
+                    _distance=0)
+            for i in inliers
+        ]
+
+        kp1_cv = [cv2.KeyPoint(float(x), float(y), 1) for x, y in kps1]
+        kp2_cv = [cv2.KeyPoint(float(x), float(y), 1) for x, y in kps2]
+
+        vis = cv2.drawMatches(
+            img1, kp1_cv,
+            img2, kp2_cv,
+            cv_matches, None,
+            flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+        )
+        out_path = os.path.join(
+            out_dir, f"ransac_matches_{i}_{i+1}.png"
+        )
+        cv2.imwrite(out_path, vis)
     
 
 if __name__ == "__main__":
     main()
-
