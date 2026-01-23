@@ -83,7 +83,7 @@ def main():
         # Harris corner detector 
         blockSize = 2
         k_size=3 # aperture param for Sobel 
-        k=0.05
+        k=0.04
         # corners_image=cv2.cornerHarris(img, blockSize=blockSize,ksize=k_size,k=k)
         # corners_norm=cv2.normalize(corners_image, None, 0, 255, cv2.NORM_MINMAX)
 
@@ -91,7 +91,7 @@ def main():
         # Better corners (Shi-Tomasi)
         # not using as harder to use during ANMS
         # corners=cv2.goodFeaturesToTrack(img,maxCorners=1000,qualityLevel=0.01,minDistance=10)
-
+        
         # bgr_img=cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
         # if corners is not None:
@@ -103,7 +103,7 @@ def main():
                 
         #         cv2.circle(bgr_img,(x,y),3,(0,0,255),-1)
 
-
+        # TODO try relaxing feature constaints to get more points (eg sky)
         # Using shi tomasi heatmap
         corners=cv2.cornerMinEigenVal(img,blockSize=blockSize,ksize=k_size)
         corners_norm=cv2.normalize(corners, None, 0, 255, cv2.NORM_MINMAX)
@@ -157,7 +157,7 @@ def main():
 
 
 
-
+    
 
     
 
