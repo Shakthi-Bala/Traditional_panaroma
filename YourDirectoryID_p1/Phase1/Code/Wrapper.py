@@ -350,7 +350,18 @@ def main():
 
     # print("Inliers:", len(inliers))
 
+    def accumulate_homographies(homographies, ref_idx):
+        H_acc = [None] * (len(homographies) + 1)
+        H_acc[ref_idx] = np.eye(3)
+        for i in range(ref_idx - 1, -1, -1):
+            H_acc[i] = H_acc[i+1] @ homographies[i]
+        for i in range(ref_idx, len(homographies)):
+            H_acc[i+1] = H_acc[i] @ np.linalg.inv(homographies[i])
+        return H_acc
 
+
+    homographies = []
+    ref_idx = len(features)//2
 
     for i in range(len(features) - 1):
         img1 = features[i]["image"]
@@ -365,7 +376,15 @@ def main():
         matches = feature_matching(desc1, desc2, kps1, kps2)
 
         H, inliers = ransac(kps1, kps2, matches)
-        print("Inliers:", len(inliers))
+        homographies.append(H)
+        
+
+        
+        # print("Inliers:", len(inliers))
+        # print(H)
+        # print(len(H))
+        m = len(H)
+        n = len(H[0])
 
         cv_matches = [
             cv2.DMatch(_queryIdx=matches[i][0],
@@ -383,11 +402,58 @@ def main():
             cv_matches, None,
             flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
         )
+         
+        cv2.waitKey(0)
+
         out_path = os.path.join(
             out_dir, f"ransac_matches_{i}_{i+1}.png"
         )
         cv2.imwrite(out_path, vis)
     
+    H_acc = accumulate_homographies(homographies, ref_idx)
+
+    def compute_panaroma_size(images, H_acc):
+        corners_all = []
+        for img, H in zip(images, H_acc):
+            h, w = img.shape[:2]
+            corners = np.array([
+                [0,0], [w,0], [w,h], [0,h]
+            ], dtype = (np.float32)).reshape(-1,1,2)
+
+            warped = cv2.perspectiveTransform(corners, H)
+            corners_all.append(warped)
+
+        corners_all = np.vstack(corners_all)
+        x_min, y_min = np.min(corners_all, axis=0).ravel().astype(np.int32)
+        x_max, y_max = np.max(corners_all, axis=0).ravel().astype(np.int32)
+
+        return (x_min, y_min, x_max, y_max)
+
+    images = [f["image"] for f in features]
+    x_min, y_min, x_max, y_max = compute_panaroma_size(images, H_acc)
+
+    h = y_max - y_min
+    w = x_max - x_min
+    T = np.array([
+        [1, 0, -x_min],
+        [0, 1, -y_min],
+        [0, 0, 1]
+    ])
+
+    panaroma = np.zeros((h, w, 3), dtype=np.uint8)
+
+    for img1, H_i in zip(images, H_acc):
+        H_warp = T @ H_i
+        warped = cv2.warpPerspective(
+            img1, H_warp, (w, h)
+        )
+        mask = (warped > 0)
+        panaroma[mask] = warped[mask]
+
+    out_path = os.path.join(out_dir, "panaroma.png")
+    cv2.imwrite(out_path, panaroma)
+
+
 
 if __name__ == "__main__":
     main()
