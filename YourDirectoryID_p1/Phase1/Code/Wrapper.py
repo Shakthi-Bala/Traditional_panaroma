@@ -440,18 +440,37 @@ def main():
         [0, 0, 1]
     ])
 
-    panaroma = np.zeros((h, w, 3), dtype=np.uint8)
 
-    for img1, H_i in zip(images, H_acc):
+    def feather_weight(warped):
+        gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+        mask = (gray > 0).astype(np.uint8) * 255  
+        dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+        dist = dist / (dist.max() + 1e-6)
+        return dist
+    
+    panaroma = np.zeros((h, w, 3), dtype=np.float32)
+    weight_sum = np.zeros((h, w), dtype=np.float32)
+
+    for img_pan, H_i in zip(images, H_acc):
         H_warp = T @ H_i
         warped = cv2.warpPerspective(
-            img1, H_warp, (w, h)
+            img_pan, H_warp, (w, h)
         )
-        mask = (warped > 0)
-        panaroma[mask] = warped[mask]
+        #Without blending
+        # mask = (warped > 0)
+        # panaroma[mask] = warped[mask]
+        weight = feather_weight(warped)
+        
+        panaroma += warped.astype(np.float32) * weight[... , None]
+        weight_sum += weight
+    
+    weight_sum[weight_sum == 0] = 1
+    panaroma = panaroma/weight_sum[..., None]
+    panaroma = np.clip(panaroma, 0, 255).astype(np.uint8)
 
     out_path = os.path.join(out_dir, "panaroma.png")
     cv2.imwrite(out_path, panaroma)
+
 
 
 
