@@ -57,10 +57,13 @@ def main():
     img_path = "/home/alien/YourDirectoryID_p1/Phase1/Data/Train/Set1"
     out_dir = "/home/alien/YourDirectoryID_p1/Phase1/Outputs"
 
+    # img_path="/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1/Data/Train"
+    # out_dir="/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1Outputs"
+
     os.makedirs(out_dir, exist_ok=True)
     img_paths = sorted(glob.glob(os.path.join(img_path, "*.jpg")))
 
-
+    
     # Shi tomasi corner detection - good features to track
 
     for img in img_paths:	
@@ -359,7 +362,7 @@ def main():
             H_acc[i+1] = H_acc[i] @ np.linalg.inv(homographies[i])
         return H_acc
 
-
+    
     homographies = []
     ref_idx = len(features)//2
 
