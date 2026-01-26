@@ -55,12 +55,12 @@ def main():
     Read a set of images for Panorama stitching
     """
     # Shakthi 
-    img_path = "/home/alien/YourDirectoryID_p1/Phase1/Data/Train/Set1"
-    out_dir = "/home/alien/YourDirectoryID_p1/Phase1/Outputs"
+    # img_path = "/home/alien/YourDirectoryID_p1/Phase1/Data/Train/Set1"
+    # out_dir = "/home/alien/YourDirectoryID_p1/Phase1/Outputs"
 
     # Aditya      
-    # img_path = "/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1/Data/Train/Set1"
-    # out_dir = "/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1Outputs"
+    img_path = "/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1/Data/Train/Set3"
+    out_dir = "/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1Outputs"
 
     os.makedirs(out_dir, exist_ok=True)
     img_paths = sorted(glob.glob(os.path.join(img_path, "*.jpg")))
@@ -365,57 +365,128 @@ def main():
         return H_acc
 
     
-    homographies = []
-    ref_idx = len(features)//2
+    def get_valid_homography(feat1, feat2, threshold=20):
+        """Computes H only if enough matches/inliers exist."""
+        matches = feature_matching(feat1["descriptors"], feat2["descriptors"], 
+                                    feat1["keypoints"], feat2["keypoints"])
 
-    for i in range(len(features) - 1):
-        img1 = features[i]["image"]
-        img2 = features[i+1]["image"]
+        if len(matches) < threshold:
+            return None, 0
 
-        kps1 = features[i]["keypoints"]
-        kps2 = features[i+1]["keypoints"]
+        H, inliers = ransac(feat1["keypoints"], feat2["keypoints"], matches)
 
-        desc1 = features[i]["descriptors"]
-        desc2 = features[i+1]["descriptors"]
-
-        matches = feature_matching(desc1, desc2, kps1, kps2)
-
-        H, inliers = ransac(kps1, kps2, matches)
-        homographies.append(H)
+        if H is None or len(inliers) < threshold:
+            return None, 0
         
-
-        
-        # print("Inliers:", len(inliers))
-        # print(H)
-        # print(len(H))
-        m = len(H)
-        n = len(H[0])
-
-        cv_matches = [
-            cv2.DMatch(_queryIdx=matches[i][0],
-                    _trainIdx=matches[i][1],
-                    _distance=0)
-            for i in inliers
-        ]
-
-        kp1_cv = [cv2.KeyPoint(float(x), float(y), 1) for x, y in kps1]
-        kp2_cv = [cv2.KeyPoint(float(x), float(y), 1) for x, y in kps2]
-
-        vis = cv2.drawMatches(
-            img1, kp1_cv,
-            img2, kp2_cv,
-            cv_matches, None,
-            flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
-        )
-         
-        cv2.waitKey(0)
-
-        out_path = os.path.join(
-            out_dir, f"ransac_matches_{i}_{i+1}.png"
-        )
-        cv2.imwrite(out_path, vis)
+        return H, len(inliers)
     
-    H_acc = accumulate_homographies(homographies, ref_idx)
+
+    # homographies = []
+    # ref_idx = len(features)//2
+
+    # for i in range(len(features) - 1):
+    #     img1 = features[i]["image"]
+    #     img2 = features[i+1]["image"]
+
+    #     kps1 = features[i]["keypoints"]
+    #     kps2 = features[i+1]["keypoints"]
+
+    #     desc1 = features[i]["descriptors"]
+    #     desc2 = features[i+1]["descriptors"]
+
+    #     matches = feature_matching(desc1, desc2, kps1, kps2)
+
+    #     H, inliers = ransac(kps1, kps2, matches)
+    #     homographies.append(H)
+        
+
+        
+    #     # print("Inliers:", len(inliers))
+    #     # print(H)
+    #     # print(len(H))
+    #     m = len(H)
+    #     n = len(H[0])
+
+    #     cv_matches = [
+    #         cv2.DMatch(_queryIdx=matches[i][0],
+    #                 _trainIdx=matches[i][1],
+    #                 _distance=0)
+    #         for i in inliers
+    #     ]
+
+    #     kp1_cv = [cv2.KeyPoint(float(x), float(y), 1) for x, y in kps1]
+    #     kp2_cv = [cv2.KeyPoint(float(x), float(y), 1) for x, y in kps2]
+
+    #     vis = cv2.drawMatches(
+    #         img1, kp1_cv,
+    #         img2, kp2_cv,
+    #         cv_matches, None,
+    #         flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+    #     )
+         
+    #     cv2.waitKey(0)
+
+    #     out_path = os.path.join(
+    #         out_dir, f"ransac_matches_{i}_{i+1}.png"
+    #     )
+    #     cv2.imwrite(out_path, vis)
+    
+    # H_acc = accumulate_homographies(homographies, ref_idx)
+
+
+    # --- SMART HOMOGRAPHY CHAINING (Center-Outward) ---
+    n_images = len(features)
+    ref_idx = n_images // 2  # Use the middle image as the anchor to minimize distortion
+    
+    H_to_ref = [None] * n_images
+    H_to_ref[ref_idx] = np.eye(3)
+
+    print(f"Reference Image Index: {ref_idx}")
+
+    # Chain Forward (From Center -> Right)
+    for i in range(ref_idx, n_images - 1):
+        # Match i to i+1
+        H_curr_next, inliers = get_valid_homography(features[i], features[i+1])
+        
+        if H_curr_next is not None:
+            # We have H that takes points from (i) to (i+1).
+            # We need H that takes (i+1) to Reference.
+            # Relation: H_(i+1)->Ref = H_i->Ref @ inv(H_i->i+1)
+            # Since our get_valid_homography returns H mapping pts1 to pts2 (i -> i+1),
+            # we simply accumulate the inverse to move "backwards" to the reference.
+            
+            # Note: Verify your H direction. 
+            # If get_valid_homography(src, dst) computes H * src = dst:
+            # To map dst back to src, we need inv(H).
+            
+            H_to_ref[i+1] = H_to_ref[i] @ np.linalg.inv(H_curr_next)
+        else:
+            print(f"Break in chain at image {i} -> {i+1}")
+            break
+
+    # Chain Backward (From Center -> Left)
+    for i in range(ref_idx, 0, -1):
+        # Match i to i-1
+        # We compute H that maps (i-1) to (i)
+        H_prev_curr, inliers = get_valid_homography(features[i-1], features[i])
+        
+        if H_prev_curr is not None:
+            # We have H that takes points from (i-1) to (i).
+            # We already know how to get from (i) to Ref.
+            # So: H_(i-1)->Ref = H_i->Ref @ H_(i-1)->i
+            H_to_ref[i-1] = H_to_ref[i] @ H_prev_curr
+        else:
+            print(f"Break in chain at image {i} -> {i-1}")
+            break
+
+    # Filter out any images that got disconnected
+    valid_indices = [i for i, h in enumerate(H_to_ref) if h is not None]
+    if len(valid_indices) < 2:
+        print("Error: Could not stitch enough images.")
+        return
+
+    images = [features[i]["image"] for i in valid_indices]
+    H_acc = [H_to_ref[i] for i in valid_indices]
 
     def compute_panaroma_size(images, H_acc):
         corners_all = []
