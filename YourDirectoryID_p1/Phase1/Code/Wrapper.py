@@ -54,8 +54,13 @@ def main():
     """
     Read a set of images for Panorama stitching
     """
+    # Shakthi 
     img_path = "/home/alien/YourDirectoryID_p1/Phase1/Data/Train/Set1"
     out_dir = "/home/alien/YourDirectoryID_p1/Phase1/Outputs"
+
+    # Aditya      
+    # img_path = "/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1/Data/Train/Set1"
+    # out_dir = "/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1Outputs"
 
     os.makedirs(out_dir, exist_ok=True)
     img_paths = sorted(glob.glob(os.path.join(img_path, "*.jpg")))
@@ -349,8 +354,10 @@ def main():
     # H, inliers = ransac(kps1, kps2, matches)
 
     # print("Inliers:", len(inliers))
-
-
+    def warp(input_mat, H_transformation):
+        out_put_image=[]
+        
+    
 
     for i in range(len(features) - 1):
         img1 = features[i]["image"]
