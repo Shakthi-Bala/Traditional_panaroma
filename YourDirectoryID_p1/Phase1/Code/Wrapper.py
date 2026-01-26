@@ -54,11 +54,11 @@ def main():
     """
     Read a set of images for Panorama stitching
     """
-    img_path = "/home/alien/YourDirectoryID_p1/Phase1/Data/Train/Set1"
+    img_path = "/home/alien/YourDirectoryID_p1/Phase1/Data/Train/CustomSet2"
     out_dir = "/home/alien/YourDirectoryID_p1/Phase1/Outputs"
 
     os.makedirs(out_dir, exist_ok=True)
-    img_paths = sorted(glob.glob(os.path.join(img_path, "*.jpg")))
+    img_paths = sorted(glob.glob(os.path.join(img_path, "*.jpeg")))
 
 
     # Shi tomasi corner detection - good features to track
@@ -349,6 +349,21 @@ def main():
     # H, inliers = ransac(kps1, kps2, matches)
 
     # print("Inliers:", len(inliers))
+    def is_valid_pair(matches, inliers, min_inliers=25, min_ratio=0.25):
+        if matches is None or len(matches) == 0:
+            return False
+        if inliers is None:
+            return False
+
+        num_inliers = len(inliers)
+        inlier_ratio = num_inliers / len(matches)
+
+        if num_inliers < min_inliers:
+            return False
+        if inlier_ratio < min_ratio:
+            return False
+
+        return True
 
     def accumulate_homographies(homographies, ref_idx):
         H_acc = [None] * (len(homographies) + 1)
@@ -361,6 +376,7 @@ def main():
 
 
     homographies = []
+    valid_pairs = []
     ref_idx = len(features)//2
 
     for i in range(len(features) - 1):
@@ -376,16 +392,17 @@ def main():
         matches = feature_matching(desc1, desc2, kps1, kps2)
 
         H, inliers = ransac(kps1, kps2, matches)
-        homographies.append(H)
-        
+
+        if not is_valid_pair(matches, inliers):
+            print(f"[REJECTED] Pair {i}-{i+1}: insufficient overlap")
+            continue
 
         
+        homographies.append(H)
+        valid_pairs.append(i)        
         # print("Inliers:", len(inliers))
         # print(H)
         # print(len(H))
-        m = len(H)
-        n = len(H[0])
-
         cv_matches = [
             cv2.DMatch(_queryIdx=matches[i][0],
                     _trainIdx=matches[i][1],
