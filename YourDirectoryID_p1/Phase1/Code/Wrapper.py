@@ -59,11 +59,16 @@ def main():
     # out_dir = "/home/alien/YourDirectoryID_p1/Phase1/Outputs"
 
     # Aditya      
-    img_path = "/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1/Data/Train/Set3"
+    img_path = "/home/adipat/Documents/Spring 26/CV/P1/Traditional_panaroma/YourDirectoryID_p1/Phase1/Data/Test/P1Ph1TestSet/Phase1/TestSet4"
     out_dir = "/home/adipat/Documents/Spring 26/CV/P1/YourDirectoryID_p1/Phase1Outputs"
 
     os.makedirs(out_dir, exist_ok=True)
-    img_paths = sorted(glob.glob(os.path.join(img_path, "*.jpg")))
+    extensions=("*.jpeg","*.jpg")
+    img_paths=[]
+    for ext in extensions:
+        img_paths.extend(glob.glob(os.path.join(img_path, ext)))
+    
+    img_paths= sorted(img_paths)
 
     
     # Shi tomasi corner detection - good features to track
@@ -81,16 +86,50 @@ def main():
 
         cv2.imwrite(out_path, image)
         
+    # Cylindrical warping 
+
+    def cylinderical_warping(img, focal_length):
+        h, w = img.shape[:2]
+        # Camera internsic matrix
+        k_matrix=np.array([[focal_length, 0, w/2],
+                          [0,focal_length, h/2],
+                          [0,           0,  1]])
+        
+        # Meshgrid for pixel coordinates
+
+        y_i, x_i = np.indices((h,w))
+
+        theta = (x_i - w / 2) / focal_length
+        
+        
+        h_cyl = (y_i - h / 2) / focal_length
+        
+        x_map = (focal_length * np.tan(theta)) + (w / 2)
+        y_map = (focal_length * h_cyl / np.cos(theta)) + (h / 2)
+
+        cyl_img= cv2.remap(img, x_map.astype(np.float32), y_map.astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+
+        gray =cv2.cvtColor(cyl_img, cv2.COLOR_BGR2GRAY)
+
+        _, threshold=cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+
+        countours, _= cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if countours:
+            x, y, w_c, h_c= cv2.boundingRect(countours[0])
+            cyl_img=cyl_img[y:y+h_c,x:x+w_c]
+
+        return cyl_img
     """
     Perform ANMS: Adaptive Non-Maximal Suppression
     Save ANMS output as anms.png
     """
     # TO get ANMS points for a single image used in feature matching step
-    def anms_single_image(image, num_features=150):
+    def anms_single_image(image, num_features=500):
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
         score_map = cv2.cornerMinEigenVal(gray, blockSize=2, ksize=3)
-        local_maxima = imreginalmax(score_map, nloxMax=300, minDist=10)
+        local_maxima = imreginalmax(score_map, nloxMax=700, minDist=10)
 
         N = len(local_maxima)
         r = [float('inf')] * N
@@ -164,7 +203,7 @@ def main():
     Feature Descriptors
     Save Feature Descriptor output as FD.png
     """
-    def feature_descriptor(image, keypoints_xy, patch_size=41, out_size=8):
+    def feature_descriptor(image, keypoints_xy, patch_size=81, out_size=8):
         assert patch_size % 2 == 1, "patch size must be odd"
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -217,11 +256,22 @@ def main():
     # print(descriptors[0].shape) # (64,)
     # print(keypoints.shape) 
 
+
+    
     # To get features of individual images
     features = []
     for img_path in img_paths:
         img =cv2.imread(img_path)
-        anms_pts = anms_single_image(img, num_features=300)
+        
+        # img =cv2.resize(img,(640,480))
+        img_width=img.shape[1]
+        FOCAL_LENGTH=img_width*0.8
+
+        # Cylindrical Projection
+
+        img=cylinderical_warping(img,FOCAL_LENGTH)
+
+        anms_pts = anms_single_image(img, num_features=500)
         desc, kps = feature_descriptor(img, anms_pts)
         features.append({
             "image" : img,
@@ -236,6 +286,7 @@ def main():
         Save Feature Matching output as matching.png
     """
     # Feature matching step
+    
     def feature_matching(desc1, desc2, kp1, kp2, ratio_thresh=0.85):
         matches = []
 
@@ -249,6 +300,37 @@ def main():
                 matches.append((i, idxs[0]))
         return matches
 
+    #srict feature matching
+    # def feature_matching(desc1, desc2, kp1, kp2, ratio_thresh=0.8): # thresh ignored here
+    #     # 1. Normalize descriptors (if not already done)
+    #     # 2. Compute full distance matrix
+    #     # Optimization: Use cv2.BFMatcher for speed, or numpy broadcasting if comfortable
+        
+    #     # We'll stick to numpy for your constraints, but optimized
+    #     matches = []
+        
+    #     if desc1 is None or desc2 is None or len(desc1) == 0 or len(desc2) == 0:
+    #         return []
+    #     # Brute force all distances
+    #     # Distance matrix calculation (N x M)
+    #     # Using (a-b)^2 = a^2 + b^2 - 2ab for speed
+    #     d1_sq = np.sum(desc1**2, axis=1, keepdims=True)
+    #     d2_sq = np.sum(desc2**2, axis=1, keepdims=True)
+    #     dist_matrix = np.sqrt(d1_sq + d2_sq.T - 2 * np.dot(desc1, desc2.T))
+
+    #     # Forward Check: For each i in desc1, find best j in desc2
+    #     forward_idx = np.argmin(dist_matrix, axis=1)
+        
+    #     # Backward Check: For each j in desc2, find best i in desc1
+    #     backward_idx = np.argmin(dist_matrix, axis=0)
+
+    #     # Cross Check: Keep only if they agree (Mutual consent)
+    #     for i, j in enumerate(forward_idx):
+    #         if backward_idx[j] == i:
+    #             matches.append((i, j))
+
+    #     print(f"  -> Cross-Check Matches: {len(matches)}")
+    #     return matches
     # for i in range(len(features) - 1):
     #     img1 = features[i]["image"]
     #     img2 = features[i+1]["image"]
@@ -312,7 +394,7 @@ def main():
         Hp = Hp / Hp[2]
         return Hp[:2]
     
-    def ransac(kps1, kps2, matches, Nmax=2000, tau=5.0):
+    def ransac(kps1, kps2, matches, Nmax=5000, tau=20.0):
         best_inliers = []
         best_H = None
 
@@ -365,7 +447,7 @@ def main():
         return H_acc
 
     
-    def get_valid_homography(feat1, feat2, threshold=20):
+    def get_valid_homography(feat1, feat2, threshold=10):
         """Computes H only if enough matches/inliers exist."""
         matches = feature_matching(feat1["descriptors"], feat2["descriptors"], 
                                     feat1["keypoints"], feat2["keypoints"])
